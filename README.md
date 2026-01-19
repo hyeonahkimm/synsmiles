@@ -2,9 +2,15 @@
 [![Python versions](https://img.shields.io/badge/Python-3.10%2B-blue)](https://www.python.org/downloads/)
 [![license: MIT](https://img.shields.io/badge/License-MIT-purple.svg)](LICENSE)
 
+# Synthesizable SMIELS Generation with GFlowNet
+
+
+This project is based on RxnFlow: Generative Flows on Synthetic Pathway for Drug Design ([the original code](https://github.com/SeonghwanSeo/RxnFlow)); see below.
+
+
 # RxnFlow: Generative Flows on Synthetic Pathway for Drug Design
 
-<img src="image/overview.png" width=600>
+<!-- <img src="image/overview.png" width=600> -->
 
 Official implementation of **_Generative Flows on Synthetic Pathway for Drug Design_** by Seonghwan Seo, Minsu Kim, Tony Shen, Martin Ester, Jinkyu Park, Sungsoo Ahn, and Woo Youn Kim. [[paper](https://arxiv.org/abs/2410.04542)]
 

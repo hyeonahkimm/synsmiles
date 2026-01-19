@@ -287,23 +287,6 @@ class SAEvaluator:
 class SynthSmilesTrainer():
     def __init__(self, logger, configs):
         self.oracle = configs.oracle.strip()
-        # self.num_metric = configs.num_metric
-        # if '+' in self.oracle:
-        #     objectives = self.oracle.split('+')
-        #     cond_cfg = ConditionalsConfig()
-        #     cond_cfg.moo.num_objectives = len(objectives)
-        #     class _TmpCfg:
-        #         pass
-        #     tmp_cfg = _TmpCfg()
-        #     tmp_cfg.cond = cond_cfg
-        #     tmp_cfg.seed = configs.seed
-        #     self.pref_cond = MultiObjectiveWeightedPreferences(tmp_cfg)
-        #     self.num_metric = len(objectives) + 1
-        # el
-        # if self.oracle == "vina":
-        #     self.num_metric = 3  # reward, vina, qed
-        # else:
-        #     self.pref_cond = None
         self.num_metric = 3 if self.oracle == "vina" else 1
 
         pdb_path = f'../../data/LIT-PCBA/{configs.vina_receptor}/protein.pdb'
@@ -322,22 +305,14 @@ class SynthSmilesTrainer():
         self.lr_z = configs.lr_z
         self.max_norm = configs.max_norm
         self.beta = configs.beta
-        # self.kl_coefficient = configs.kl_coefficient
-        # self.rtb = configs.rtb
-        # self.use_log_reward = configs.use_log_reward
         self.buffer_size = configs.buffer_size
-        # self.buffer_topk = configs.buffer_topk
         self.sampling_temp = configs.sampling_temp
         self.eval_sampling_temp = configs.eval_sampling_temp
-        # self.n_replay = configs.n_replay
         self.replay_batch_size = configs.replay_batch_size
-        # self.evict_by = configs.evict_by
         self.eval_every = configs.eval_every
-        # self.replace_sampling = configs.replace_sampling
 
         # constraints
         self.chemical_filter = ChemicalFilter(catalog=configs.catalog, property_rule=configs.property_rule) if configs.property_rule != "none" else None
-        # self.filter_start_step = configs.filter_start_step
         
         # logger
         self.wandb = configs.wandb
@@ -365,7 +340,6 @@ class SynthSmilesTrainer():
         self.sa_evaluator = SAEvaluator()
         self.sa_threshold = configs.sa_threshold
         self.filter_unsynthesizable = configs.filter_unsynthesizable
-        # self.sa_eval_threshold = configs.sa_eval_threshold
         self.synthesizability_evaluator = SynthesizabilityEvaluator(use_retrosynthesis=configs.use_retrosynthesis, env=configs.retro_env, max_steps=configs.max_retro_steps)
 
         self.reshape_reward = configs.reshape_reward
@@ -373,15 +347,6 @@ class SynthSmilesTrainer():
         self.aux_loss = configs.aux_loss
         self.neg_coefficient = configs.neg_coefficient
         self.without_mutation = configs.without_mutation
-        # self.logp_thr = configs.logp_thr
-        # self.sigmoid_alpha = configs.sigmoid_alpha
-        # self.use_weighted_logp = configs.use_weighted_logp
-        # self.use_mutation = configs.use_mutation
-        # self.use_token_threshold = configs.use_token_threshold
-        # self.dropout_off = configs.dropout_off
-
-        # self.separate_optimizer = configs.separate_optimizer
-        # self.separate_update = configs.separate_update
         
     def train(self):
         oracle = f"{self.oracle}-{self.vina_receptor}" if self.oracle == "vina" else self.oracle
@@ -396,12 +361,10 @@ class SynthSmilesTrainer():
                                    evict_by='reward'
                                    )
         
-        # Backup code
         self.optimizer = torch.optim.AdamW([{'params': self.model.parameters(), 
                                                  'lr': self.learning_rate},
                                             {'params': self.log_z, 
                                                  'lr': self.lr_z}])
-
 
         if self.n_warmup_steps > 0:
             self.scheduler = get_linear_schedule_with_warmup(
@@ -409,7 +372,6 @@ class SynthSmilesTrainer():
                 num_warmup_steps=self.n_warmup_steps,
                 num_training_steps=self.n_steps
             )
-
 
         self.negative_replay = ReplayBuffer(eos_token_id = self.tokenizer.eos_token_id if self.tokenizer.eos_token_id else 1,
                                 pad_token_id = self.tokenizer.pad_token_id,
@@ -424,8 +386,6 @@ class SynthSmilesTrainer():
         #         num_warmup_steps=self.n_warmup_steps,
         #         num_training_steps=self.n_steps
         #     )
-
-
 
         print(f"Starting training (oracle: {self.oracle})")
         self.model.train()
@@ -469,7 +429,6 @@ class SynthSmilesTrainer():
                     mol = Chem.MolFromSmiles(s)
                     if mol:
                         valid_indices.append(i)
-                        # valid_smiles.append(s)
                         valid_smiles.append(Chem.MolToSmiles(mol, isomericSmiles=False))  # canonicalize smiles # TODO: check here (should we canonicalize all samples?)
                 except:
                     pass
@@ -498,14 +457,6 @@ class SynthSmilesTrainer():
                     self.negative_replay.add_batch(seqs_negative, smis_negative, reward_negative, synthesizability[negative_indices].tolist(), masks=None, use_reshaped_reward=self.reshape_reward)
 
             if self.filter_unsynthesizable:
-                # if self.reshape_reward:
-                #     negative_indices = (positive == 0.0).nonzero(as_tuple=True)[0]
-                #     seqs_negative = valid_seqs[negative_indices]
-                #     smis_negative = [valid_smiles[i] for i in negative_indices.tolist()]
-                #     reward_negative = valid_reward[negative_indices]
-                #     self.negative_replay.add_batch(seqs_negative, smis_negative, reward_negative, synthesizability[negative_indices].tolist(), masks=None, use_reshaped_reward=self.reshape_reward)
-
-                # else:
                 if self.aux_loss != "none":
                     negative_indices = (positive == 0.0).nonzero(as_tuple=True)[0]
                     seqs_negative = valid_seqs[negative_indices]
@@ -517,52 +468,6 @@ class SynthSmilesTrainer():
                 valid_seqs = valid_seqs[positive.bool()]
                 valid_smiles = [smis for flag, smis in zip(positive, valid_smiles) if flag]
 
-                    # mutated_neg_smiles, mutated_neg_reward = [], []
-                    # mutated_mask, mutated_seqs = [], []
-                    # paired = []
-                    # for s, r in zip(valid_smiles, valid_reward):
-                    #     mutated = mutate(s, self.synthesizability_evaluator)
-                    #     if mutated:
-                    #         try:
-                    #             mutated_info = diff_mask_molformer(s, mutated, self.tokenizer)
-                    #         except:
-                    #             paired.append(False)
-                    #             continue
-                    #         paired.append(True)
-                    #         mutated_neg_smiles.append(mutated)
-                    #         mutated_neg_reward.append(r)  # not used anyway
-                    #         mutated_mask.append(torch.tensor(mutated_info['mask']))
-                    #         mutated_seqs.append(torch.tensor(mutated_info['input_ids']))
-                    #     else:
-                    #         paired.append(False)
-                    # # mutated_neg_seqs = self.tokenizer.batch_encode_plus(mutated_neg_smiles, add_special_tokens=True, padding=True, max_length=self.max_length, return_tensors='pt')["input_ids"].to(self.device)
-                    # if len(mutated_seqs) > 0:
-                    #     mutated_neg_seqs = pad_sequence(mutated_seqs, batch_first=True, padding_value=2).to(self.device)
-                    #     mutated_neg_reward = torch.tensor(mutated_neg_reward).to(self.device)
-                    #     if self.use_mutation:
-                    #         self.negative_replay.add_batch(mutated_neg_seqs.to('cpu'), mutated_neg_smiles, mutated_neg_reward.to('cpu'), [0] * len(mutated_seqs), masks=mutated_mask)
-
-                # else:
-
-                #     valid_reward = valid_reward[positive.bool()]
-                #     valid_seqs = valid_seqs[positive.bool()]
-                #     valid_smiles = [smis for flag, smis in zip(positive, valid_smiles) if flag]
-        
-            # topk = min(self.buffer_topk, len(valid_reward))
-            # if topk < len(valid_reward):
-            #     topk_indices = torch.topk(valid_reward, topk).indices
-            #     seqs_topk = valid_seqs[topk_indices]
-            #     smis_topk = [valid_smiles[i] for i in topk_indices.tolist()]
-            #     reward_topk = valid_reward[topk_indices]
-            #     synth_topk = synthesizability[topk_indices]
-            #     positive_topk = positive[topk_indices]
-            # else:
-            #     seqs_topk = valid_seqs
-            #     smis_topk = valid_smiles
-            #     reward_topk = valid_reward
-            #     synth_topk = synthesizability
-            #     positive_topk = positive
-            # import pdb; pdb.set_trace()
             self.replay.add_batch(valid_seqs, valid_smiles, valid_reward, synthesizability, None, use_reshaped_reward=self.reshape_reward)
 
             self.model.train()
@@ -643,7 +548,6 @@ class SynthSmilesTrainer():
                 "sampled_avg_sa": sa_scores.mean().item(),
                 "sampled_synth_ratio": synthesizability.mean().item(),
                 "sampled_filter_ratio": (after_filtering).float().mean().item(),
-                # "sampled_topk_avg_reward": reward_topk.mean().item(),
                 "sampled_max_length": (seqs == 1).nonzero()[:, 1].max().item(),
                 "num_onpolicy_samples": len(valid_smiles),
                 "buffer_top10_avg_reward": top10_reward,
@@ -706,32 +610,6 @@ class SynthSmilesTrainer():
                 loss = torch.pow(forward_flow - backward_flow, 2).mean()
                 replay_tb_loss = loss.item()
 
-                # min_pos_logp = seq_logprobs.min().item()
-                # if self.aux_loss == "quantile_sch_softplus_logp":
-                #     quantile = max(quantile - (0.15 / self.n_steps) * quantile, 0.1)  # TODO: ??
-                #     k = math.ceil(quantile * len(seq_logprobs))
-                #     # k = math.ceil((1 - step / self.n_steps) * quantile * len(seq_logprobs))
-                #     logp_thr, _ = torch.kthvalue(seq_logprobs, k)
-                #     logp_thr = max(logp_thr.item(), self.logp_thr)
-                # elif self.aux_loss == "quantile_softplus_logp":
-                #     k = math.ceil(quantile * len(seq_logprobs))
-                #     # k = math.ceil((1 - step / self.n_steps) * quantile * len(seq_logprobs))
-                #     logp_thr, _ = torch.kthvalue(seq_logprobs, k)
-                #     logp_thr = max(logp_thr.item(), self.logp_thr)
-                # elif self.aux_loss == "dynamic_softplus_logp":
-                #     logp_thr = max(seq_logprobs.min().item(), self.logp_thr)
-                #     # k = max(1, int(0.1 * len(seq_logprobs))) # math.ceil(0.1 * len(seq_logprobs))
-                #     # logp_k_thr, _ = torch.kthvalue(seq_logprobs, k)
-                #     # logp_thr = max(seq_logprobs[seq_logprobs <= logp_k_thr].mean().item() , self.logp_thr)  # for safety
-                # else:
-                #     logp_thr = self.logp_thr
-                
-                # if self.aux_loss == "none":
-                #     self.optimizer.zero_grad()
-                #     loss.backward()
-                #     torch.nn.utils.clip_grad_norm_(self.model.parameters(), max_norm=self.max_norm)
-                #     self.optimizer.step()
-
                 if self.aux_loss != "none" and len(self.negative_replay.heap) >= self.replay_batch_size:
                     
                     neg_inputs, _ = self.negative_replay.sample(self.replay_batch_size, self.device)
@@ -754,22 +632,6 @@ class SynthSmilesTrainer():
                     avg_neg_logp = neg_seq_logprobs.mean().item()
 
                     if self.aux_loss == "relative_logp":
-                        # if self.separate_update or self.separate_optimizer:  # re-compute
-                        #     outputs = self.model(
-                        #         input_ids=buf_seqs[:, :-1],
-                        #         attention_mask=(buf_seqs[:, :-1] != self.tokenizer.pad_token_id).long(),
-                        #         labels=buf_seqs[:, 1:],
-                        #     )
-                        #     # print(torch.cuda.memory_summary())
-
-                        #     # Fix shape mismatch for torch.gather by aligning shift_logits and shift_labels
-                        #     shift_labels = buf_seqs[:, 1:]
-                        #     pos_logits = outputs.logits  # (batch, seq_len, vocab)
-                        #     pos_log_probs = torch.nn.functional.log_softmax(pos_logits, dim=-1)
-                        #     pos_seq_token_logprobs = torch.gather(pos_log_probs, 2, shift_labels.unsqueeze(-1)).squeeze(-1)
-                        #     pos_seq_token_logprobs = pos_seq_token_logprobs * (shift_labels != self.tokenizer.pad_token_id)
-                        #     pos_seq_logprobs = pos_seq_token_logprobs.sum(dim=1)
-                        # else:
                         pos_seq_logprobs = seq_logprobs
 
                         neg_log_sum = torch.logsumexp(neg_seq_logprobs, dim=0) - math.log(max(neg_seq_logprobs.numel(), 1.0))
@@ -791,7 +653,7 @@ class SynthSmilesTrainer():
                                     mutated_seqs.append(torch.tensor(mutated_info['input_ids']))
                                 else:
                                     paired.append(False)
-                            # mutated_neg_seqs = self.tokenizer.batch_encode_plus(mutated_neg_smiles, add_special_tokens=True, padding=True, max_length=self.max_length, return_tensors='pt')["input_ids"].to(self.device)
+
                             if len(mutated_seqs) > 0:
                                 mutated_neg_seqs = pad_sequence(mutated_seqs, batch_first=True, padding_value=2).to(self.device)
                             
@@ -814,25 +676,8 @@ class SynthSmilesTrainer():
                             aux_loss += -(pos_seq_logprobs[paired] - torch.logaddexp(pos_seq_logprobs[paired], mutated_log_sum)).mean()
 
                     elif self.aux_loss == "relative_logp_pairwise_mutated":
-                        # if self.separate_update or self.separate_optimizer:  # re-compute
-                        #     outputs = self.model(
-                        #         input_ids=buf_seqs[:, :-1],
-                        #         attention_mask=(buf_seqs[:, :-1] != self.tokenizer.pad_token_id).long(),
-                        #         labels=buf_seqs[:, 1:],
-                        #     )
-                        #     # print(torch.cuda.memory_summary())
-
-                        #     # Fix shape mismatch for torch.gather by aligning shift_logits and shift_labels
-                        #     shift_labels = buf_seqs[:, 1:]
-                        #     pos_logits = outputs.logits  # (batch, seq_len, vocab)
-                        #     pos_log_probs = torch.nn.functional.log_softmax(pos_logits, dim=-1)
-                        #     pos_seq_token_logprobs = torch.gather(pos_log_probs, 2, shift_labels.unsqueeze(-1)).squeeze(-1)
-                        #     pos_seq_token_logprobs = pos_seq_token_logprobs * (shift_labels != self.tokenizer.pad_token_id)
-                        #     pos_seq_logprobs = pos_seq_token_logprobs.sum(dim=1)
-                        # else:
                         pos_seq_logprobs = seq_logprobs
 
-                        # aux_loss = -(pos_seq_logprobs - torch.logaddexp(pos_seq_logprobs, neg_seq_logprobs)).mean() 
                         neg_log_sum = torch.logsumexp(neg_seq_logprobs, dim=0) - math.log(max(neg_seq_logprobs.numel(), 1.0))
                         aux_loss = -(pos_seq_logprobs - torch.logaddexp(pos_seq_logprobs, neg_log_sum)).mean()
 
@@ -852,7 +697,7 @@ class SynthSmilesTrainer():
                                     mutated_seqs.append(torch.tensor(mutated_info['input_ids']))
                                 else:
                                     paired.append(False)
-                            # mutated_neg_seqs = self.tokenizer.batch_encode_plus(mutated_neg_smiles, add_special_tokens=True, padding=True, max_length=self.max_length, return_tensors='pt')["input_ids"].to(self.device)
+
                             if len(mutated_seqs) > 0:
                                 mutated_neg_seqs = pad_sequence(mutated_seqs, batch_first=True, padding_value=2).to(self.device)
                             
@@ -871,7 +716,6 @@ class SynthSmilesTrainer():
                             mutated_seq_token_logprobs = mutated_seq_token_logprobs * (mutated_shift_labels != self.tokenizer.pad_token_id)
                             mutated_seq_logprobs = mutated_seq_token_logprobs.sum(dim=1)
 
-                            # mutated_log_sum = torch.logsumexp(mutated_seq_logprobs, dim=0) - math.log(max(mutated_seq_logprobs.numel(), 1.0))
                             aux_loss += -(pos_seq_logprobs[paired] - torch.logaddexp(pos_seq_logprobs[paired], mutated_seq_logprobs)).mean()
 
                     else:
@@ -879,27 +723,12 @@ class SynthSmilesTrainer():
 
                     replay_aux_loss = aux_loss.item()
 
-                    # if self.separate_optimizer:
-                    #     self.neg_optimizer.zero_grad()
-                    #     (self.neg_coefficient * aux_loss).backward()
-                    #     torch.nn.utils.clip_grad_norm_(self.model.parameters(), max_norm=self.max_norm)
-                    #     self.neg_optimizer.step()
-                    # elif self.separate_update:
-                    #     self.optimizer.zero_grad()
-                    #     (self.neg_coefficient * aux_loss).backward()
-                    #     torch.nn.utils.clip_grad_norm_(self.model.parameters(), max_norm=self.max_norm)
-                    #     self.optimizer.step()
-                    # else:
                     loss = loss + (self.neg_coefficient * aux_loss)
 
                 self.optimizer.zero_grad()
                 loss.backward()
                 torch.nn.utils.clip_grad_norm_(self.model.parameters(), max_norm=self.max_norm)
                 self.optimizer.step()
-                # else:
-                #     tot_aux_loss = 0.0
-                #     neg_seq_logprobs = torch.tensor(0.0)
-                # tot_aux_loss /= self.n_replay
             else:
                 neg_seq_logprobs = torch.tensor(0.0)
 
@@ -1036,7 +865,6 @@ class SynthSmilesTrainer():
                         self.vina_hist[canonical_s] = {'vina': v.item(), 'qed': q.item()}
                     except:
                         pass
-            # synth_ratio = (sa_scores < self.sa_eval_threshold).float().mean().item()
             synthesizability = torch.tensor(self.synthesizability_evaluator.score_batch(samples))
             synth_ratio = synthesizability.mean().item()
         sa_scores = torch.tensor(self.sa_evaluator.score_batch(samples))
@@ -1147,6 +975,7 @@ class SynthSmilesTrainer():
 
 
 
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--oracle", type=str, default="seh", choices=["qed", "seh", "jnk3", "vina"])
@@ -1157,8 +986,8 @@ if __name__ == "__main__":
     parser.add_argument("--batch_size", type=int, default=64)
     parser.add_argument("--replay_batch_size", type=int, default=64)
     parser.add_argument("--init_z", type=float, default=0.0)
-    parser.add_argument("--learning_rate", type=float, default=1e-4)  # 1e-4
-    parser.add_argument("--lr_z", type=float, default=0.001)  # 0.1
+    parser.add_argument("--learning_rate", type=float, default=1e-4)
+    parser.add_argument("--lr_z", type=float, default=0.001)
     parser.add_argument("--max_norm", type=float, default=10.0)
     parser.add_argument("--beta", type=float, default=50.0)
     parser.add_argument("--wandb", choices=["online", "offline", "disabled"], default="disabled")
