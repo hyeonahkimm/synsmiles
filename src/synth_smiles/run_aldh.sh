@@ -1,0 +1,26 @@
+#!/bin/bash
+#SBATCH --job-name=aldh-pairwise-rel
+#SBATCH --error=log/job_aldh_pairwise_rel_error.txt
+#SBATCH --output=log/job_aldh_pairwise_rel_output.txt
+#SBATCH --cpus-per-task=8
+#SBATCH --mem=32G
+#SBATCH --gres=gpu:1
+#SBATCH --partition=long
+
+module load python/3.10
+module load cuda/12.4.1/cudnn  # Match your PyTorch version
+
+# Activate venv (created *after* loading the above python module)
+source ~/scratch/envs/rxnflow/bin/activate
+
+# python train.py --oracle vina --vina_receptor ESR_antago --beta 25 --n_steps 5000 --batch_size 64 --n_replay 1 --replay_batch_size 64 --n_warmup_steps 100 --sa_threshold 3 --init_z 0 --lr_z 0.001 --rtb --buffer_size 6400 --reshape_reward --wandb online --run_name real-re2-beta25-rs --seed 0 --use_retrosynthesis --retro_env stock
+# python train.py --oracle vina --vina_receptor TP53 --beta 25 --n_steps 5000 --batch_size 64 --n_replay 1 --replay_batch_size 64 --n_warmup_steps 100 --sa_threshold 3 --init_z 0 --lr_z 0.001 --rtb --buffer_size 6400 --filter_unsynthesizable --aux_loss quantile_softplus_logp  --neg_coefficient 0.0001 --use_mutation --logp_thr -20 --sigmoid_alpha 5 --wandb online --run_name real-beta25-quantile-trj --seed 0 --use_retrosynthesis --retro_env stock
+# python train_mutate.py --oracle vina --vina_receptor ALDH1 --beta 25 --n_steps 5000 --batch_size 64 --n_replay 1 --replay_batch_size 64 --n_warmup_steps 100 --sa_threshold 3 --filter_unsynthesizable --aux_loss unlikelihood+softplus --separate_neg_buffer --neg_coefficient 0.00001 --init_z 0 --lr_z 0.001 --rtb --buffer_size 6400 --use_mutation --seed 0 --use_retrosynthesis --retro_env stock --wandb online --run_name real-beta25-mutated-softplus+ul-e5-unified-opt-dropoutoff --dropout_off
+# python train_mutate.py --oracle vina --vina_receptor ALDH1 --beta 25 --n_steps 5000 --batch_size 64 --n_replay 1 --replay_batch_size 64 --n_warmup_steps 100 --sa_threshold 3 --filter_unsynthesizable --aux_loss unlikelihood+softplus --separate_neg_buffer --neg_coefficient 0.00001 --init_z 0 --lr_z 0.001 --rtb --buffer_size 6400 --use_mutation --seed 0 --use_retrosynthesis --retro_env stock --wandb online --run_name real-beta25-mutated-softplus+ul-e5
+# python train_mutate.py --oracle vina --vina_receptor ESR_antago --beta 25 --n_steps 5000 --batch_size 64 --n_replay 1 --replay_batch_size 64 --n_warmup_steps 100 --sa_threshold 3 --filter_unsynthesizable --aux_loss unlikelihood+softplus --separate_neg_buffer --neg_coefficient 0.0001 --init_z 0 --lr_z 0.001 --rtb --buffer_size 6400 --use_mutation --seed 0 --use_retrosynthesis --retro_env stock --wandb online --run_name real-beta25-mutated-softplus+ul --separate_optimizer
+# python train_mutate.py --oracle vina --vina_receptor ALDH1 --beta 25 --n_steps 5000 --batch_size 64 --n_replay 1 --replay_batch_size 64 --n_warmup_steps 100 --sa_threshold 3 --filter_unsynthesizable --aux_loss softplus_both --separate_neg_buffer --neg_coefficient 0.0001 --init_z 0 --lr_z 0.001 --rtb --buffer_size 6400 --use_mutation --seed 0 --use_retrosynthesis --retro_env stock --wandb online --run_name real-beta25-mutated-softplus_both --separate_optimizer
+# python train_mutate.py --oracle vina --vina_receptor ALDH1 --beta 25 --n_steps 5000 --batch_size 64 --n_replay 1 --replay_batch_size 64 --n_warmup_steps 100 --sa_threshold 3 --filter_unsynthesizable --aux_loss softplus_both --separate_neg_buffer --neg_coefficient 0.0001 --init_z 0 --lr_z 0.001 --rtb --buffer_size 6400 --use_mutation --seed 0 --use_retrosynthesis --retro_env stock --wandb online --run_name real-beta25-mutated-softplus_both-unified-opt
+# python train.py --oracle vina --vina_receptor ALDH1 --beta 25 --n_steps 5000 --batch_size 64 --n_replay 1 --replay_batch_size 64 --n_warmup_steps 100 --sa_threshold 3 --filter_unsynthesizable --aux_loss quantile_softplus_logp --sigmoid_alpha 5 --neg_coefficient 0.0001 --init_z 0 --lr_z 0.001 --rtb --buffer_size 6400 --wandb online --run_name real-beta25-trj-quantile-e4 --seed 0 --use_retrosynthesis --retro_env stock
+python train.py --oracle vina --vina_receptor ALDH1 --beta 25 --n_steps 5000 --batch_size 64 --n_replay 1 --replay_batch_size 64 --n_warmup_steps 100 --sa_threshold 3 --filter_unsynthesizable --aux_loss relative_logp_pairwise_mutated --sigmoid_alpha 1.0 --neg_coefficient 0.001 --init_z 0 --lr_z 0.001 --rtb --buffer_size 6400 --seed 0 --use_retrosynthesis --retro_env stock_hb --max_retro_steps 3 --run_name hb3-beta25-sampling-relative-logp-pairwise-mutated-e3 --wandb online --replace_sampling
+# python train.py --oracle vina --vina_receptor ALDH1 --beta 25 --n_steps 5000 --batch_size 64 --n_replay 1 --replay_batch_size 64 --n_warmup_steps 100 --sa_threshold 3 --filter_unsynthesizable --aux_loss relative_logp --sigmoid_alpha 1.0 --neg_coefficient 0.001 --init_z 0 --lr_z 0.001 --rtb --buffer_size 6400 --seed 0 --use_retrosynthesis --retro_env stock_hb --max_retro_steps 3 --run_name hb3-beta25-sampling-rs-relative-logp-e3 --wandb online --reshape_reward --replace_sampling
+# python train.py --oracle vina --vina_receptor ALDH1 --beta 25 --n_steps 5000 --batch_size 64 --n_replay 1 --replay_batch_size 64 --n_warmup_steps 100 --sa_threshold 3 --init_z 0 --lr_z 0.001 --rtb --buffer_size 6400 --seed 0 --use_retrosynthesis --retro_env stock_hb --max_retro_steps 3 --run_name hb3-beta25-rs --wandb online --reshape_reward
