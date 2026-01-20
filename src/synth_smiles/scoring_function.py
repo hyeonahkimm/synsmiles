@@ -8,6 +8,8 @@ from rdkit import RDLogger
 from rdkit.Chem import QED
 from rdkit.Chem import Mol as RDMol
 RDLogger.DisableLog('rdApp.*')
+# from openbabel import pybel
+# import pretrained_chemprop
 
 import subprocess
 import multiprocessing
@@ -25,14 +27,14 @@ def int_div(smiles):
     return evaluator(smiles)
 
 
-def get_scores(smiles, mode="qed", n_process=1, models=None, pref_cond=None, vina=None, hist= {}):
+def get_scores(smiles, mode="QED", n_process=1, models=None, pref_cond=None, vina=None, hist= {}):
     smiles_groups = []
     group_size = len(smiles) / n_process
     for i in range(n_process):
         smiles_groups += [smiles[int(i * group_size):int((i + 1) * group_size)]]
 
     temp_data = []
-    if models is None:
+    if models is None and mode.startswith("docking"):
         pool = multiprocessing.Pool(processes = n_process)
         for index in range(n_process):
             temp_data.append(pool.apply_async(get_scores_subproc, args=(smiles_groups[index], mode, vina)))
@@ -113,17 +115,65 @@ def get_scores_subproc(smiles, mode, models=None, default=0.0, pref_cond=None, v
     oracle_QED = Oracle(name='QED')
     oracle_SA = Oracle(name='SA')
 
-    if mode == "qed":
+    if mode == "QED":
         for i in range(len(smiles)):
             if mols[i]:
                 scores.append([QED.qed(mols[i])])
             else:
                 scores.append([default])
 
-    elif mode == "seh":
+    elif mode == "SEH":
         scores = mol2seh(mols, default=default)
+    elif mode.startswith("SEH+"):
 
-    elif mode == "jnk3":
+        graphs = [bengio2021flow.mol2graph(i) for i in mols]
+        assert len(graphs) == len(mols)
+        is_valid = [i is not None for i in graphs]
+        is_valid_t = torch.tensor(is_valid, dtype=torch.bool)
+
+        # Compute objectives
+        flat_r = []
+        for obj in mode.split('+'):
+            if obj == "SEH":
+                flat_r.append(calc_seh_reward(graphs))
+            else:
+                flat_r.append(aux_tasks[obj.lower()](mols, is_valid))
+        flat_r = torch.stack(flat_r, dim=1)   # (N, n_objectives)
+        # qed = torch.tensor([safe(QED.qed, i, 0.0) for i in mols], dtype=torch.float32)
+        # flat = torch.stack([seh, qed], dim=1)
+
+        # Determine preferences
+        prefs = pref_cond.sample(len(smiles))["preferences"].float()
+        moo_scores = (flat_r * prefs).sum(1)
+        scores = torch.zeros((len(smiles), len(mode.split('+')) + 1))
+        scores[is_valid_t, 0] = moo_scores
+        scores[is_valid_t, 1:] = flat_r
+        scores = scores.tolist()  # (N, n_objectives + 1)
+        # scores = [[c.item(), s.item(), q.item()] for c, s, q in zip(moo_scores, seh, qed)]
+
+    elif mode == "DRD2":
+        oracle = Oracle(name='DRD2')
+        for i in range(len(smiles)):
+            if mols[i] != None:
+                try:
+                    scores += safe(oracle, [smiles[i]], 0.0)
+                except Exception as e:
+                    scores += [0.0]
+            else:
+                scores += [0.0]
+
+    elif mode == "GSK3B":
+        oracle = Oracle(name='GSK3B')
+        for i in range(len(smiles)):
+            if mols[i] != None:
+                try:
+                    scores += safe(oracle, [smiles[i]], 0.0)
+                except Exception as e:
+                    scores += [0.0]
+            else:
+                scores += [0.0]
+
+    elif mode == "JNK3":
         oracle = Oracle(name='JNK3')
         for i in range(len(smiles)):
             if mols[i] != None:
@@ -133,11 +183,12 @@ def get_scores_subproc(smiles, mode, models=None, default=0.0, pref_cond=None, v
                     scores += [0.0]
             else:
                 scores += [0.0]
-    
     elif mode == "vina":
         assert vina is not None
         
-        vina_scores = []
+        # vina_scores = vina.run_smiles(smiles, save_path=None)  # parallel
+        # if the element is smaller than -20, set as 0
+        vina_scores = []  # [v if v >= -20 else 0 for v in vina_scores]
         qed_scores = []
         unseen_idx = []
         for i in range(len(smiles)):
