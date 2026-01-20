@@ -15,4 +15,4 @@ source ~/scratch/envs/rxnflow/bin/activate
 
 export LD_LIBRARY_PATH=/home/mila/k/kimh/.conda/pkgs/libboost-1.85.0-hba137d9_2/lib:$LD_LIBRARY_PATH
 
-python train_clean.py --oracle vina --vina_receptor FEN1 --beta 25 --neg_coefficient 0.001 --use_retrosynthesis --retro_env stock_hb --max_retro_steps 3 --filter_unsynthesizable --aux_loss relative_logp --run_name hb3-beta25-sampling-relative-logp-wo-mut-e3 --without_mutation --seed 1 --wandb online
+python train.py --oracle vina --vina_receptor FEN1 --beta 25 --neg_coefficient 0.001 --use_retrosynthesis --retro_env stock_hb --max_retro_steps 3 --filter_unsynthesizable --aux_loss relative_logp --run_name hb3-beta25-sampling-relative-logp-wo-mut-e3 --without_mutation --seed 1 --wandb online
