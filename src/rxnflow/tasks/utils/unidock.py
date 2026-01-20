@@ -113,14 +113,14 @@ def docking(
         # unidock
         if len(sdf_list) > 0:
             runner = UniDock(
-                protein_pdbqt_path,
-                sdf_list,
-                center[0],
-                center[1],
-                center[2],
-                size[0],
-                size[1],
-                size[2],
+                receptor=protein_pdbqt_path,
+                ligands=sdf_list,
+                center_x=center[0],
+                center_y=center[1],
+                center_z=center[2],
+                size_x=size[0],
+                size_y=size[1],
+                size_z=size[2],
                 out_dir / "workdir",
             )
             runner.docking(
