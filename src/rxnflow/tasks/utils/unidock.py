@@ -96,7 +96,7 @@ def docking(
     protein_pdb_path = Path(protein_pdb_path)
     protein_pdbqt_path: Path = protein_pdb_path.parent / (protein_pdb_path.name + "qt")
     if not protein_pdbqt_path.exists():
-        pdb2pdbqt(protein_pdb_path, protein_pdbqt_path)
+        pdb2pdbqt(str(protein_pdb_path), str(protein_pdbqt_path))
 
     with tempfile.TemporaryDirectory() as out_dir:
         out_dir = Path(out_dir)
@@ -121,10 +121,10 @@ def docking(
                 size_x=size[0],
                 size_y=size[1],
                 size_z=size[2],
-                out_dir / "workdir",
+                workdir=out_dir / "workdir",
             )
             runner.docking(
-                out_dir / "savedir",
+                save_dir=out_dir / "savedir",
                 num_modes=1,
                 search_mode=search_mode,
                 seed=seed,
