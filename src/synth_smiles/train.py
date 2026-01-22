@@ -922,12 +922,17 @@ class SynthSmilesTrainer():
         # filter_ratio = after_filtering.float().mean().item()
 
         # positive = synthesizability * after_filtering.float()
+        mode = 'final' if final else 'eval'
 
-        if final or (step + 1) % 1000 == 0:
-            # save samples (smis), rewards, synthesizability to csv
-            after_filtering = torch.ones(len(samples))
-            df = pd.DataFrame(zip(samples, reward.tolist(), synthesizability.tolist(), after_filtering.tolist()), columns=["smiles", "reward", "synthesizability", "chemical_filter"])
-            df.to_csv(f"outputs/{oracle}/{self.run_name}_{step}.csv", index=False)
+        # save samples (smis), rewards, synthesizability to csv
+        after_filtering = torch.ones(len(samples))
+        df = pd.DataFrame(zip(samples, reward.tolist(), synthesizability.tolist(), after_filtering.tolist()), columns=["smiles", "reward", "synthesizability", "chemical_filter"])
+        df.to_csv(f"outputs/{oracle}/{self.run_name}_{step}.csv", index=False)
+
+        with open(f"outputs/{oracle}/{self.run_name}_positive_replay.pkl", "wb") as f:
+            pickle.dump(self.replay.heap, f)
+        with open(f"outputs/{oracle}/{self.run_name}_negative_replay.pkl", "wb") as f:
+            pickle.dump(self.negative_replay.heap, f)
 
         molecules = []
         unique_indices, unique_smiles, unique_scores, unique_molecules, unique_retrosynthesis = [], [], [], [], []
@@ -955,11 +960,6 @@ class SynthSmilesTrainer():
                     "unique_scores": unique_scores,
                     "unique_retrosynthesis": unique_retrosynthesis
                 }, f)
-
-            with open(f"outputs/{oracle}/{self.run_name}_positive_replay.pkl", "wb") as f:
-                pickle.dump(self.replay.heap, f)
-            with open(f"outputs/{oracle}/{self.run_name}_negative_replay.pkl", "wb") as f:
-                pickle.dump(self.negative_replay.heap, f)
 
         if len(unique_smiles) >= 100:
             unique_reward = reward[unique_indices]
