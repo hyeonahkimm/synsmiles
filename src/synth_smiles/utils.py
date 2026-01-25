@@ -12,7 +12,7 @@ from genetic_operator import mutate as graph_ga_mutate
 # from smiles_ga import mutate as smiles_ga_mutate
 
 
-def mutate(smiles, synth_evaluator, mode="graph_ga"):
+def mutate(smiles, synth_evaluator, mode="graph_ga", n_try: int=10):
     """
     Generate an unsynthesizable SMILES string by mutating the input SMILES string.
     """
@@ -21,12 +21,9 @@ def mutate(smiles, synth_evaluator, mode="graph_ga"):
     except:
         return None
 
-    for i in range(10):
+    for i in range(n_try):
         if mode == "graph_ga":
             mutated = graph_ga_mutate.mutate(mol, 1.0)
-        # elif mode == "smiles_ga":
-        #     mutated_smis, mutated_gene = smiles_ga_mutate.mutate_block(smiles)
-        #     mutated = Chem.MolFromSmiles(mutated_smis) if len(mutated_smis) > 0 else None
         else:
             raise ValueError(f"Invalid mode: {mode}")
         
@@ -35,8 +32,7 @@ def mutate(smiles, synth_evaluator, mode="graph_ga"):
             if synth_evaluator.score(mutated_smiles):  # still synthesizable
                 mol = mutated if (i+1) % 5 == 0 else Chem.MolFromSmiles(smiles)
             else:
-                return mutated_smiles
-
+                return None
     return None
 
 
@@ -432,7 +428,7 @@ if __name__ == "__main__":
     tokens, ids, mask = diff_mask_molformer_bck(s1, s2, tokenizer)
     res = diff_mask_molformer(s1, s2, tokenizer)
     res2 = diff_mask_molformer(s1, s2, tokenizer, mark_bonds=True)
-    import pdb; pdb.set_trace()
+    
     print(tokens)
     print(ids)
     print(mask)

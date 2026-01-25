@@ -287,23 +287,6 @@ class SAEvaluator:
 class SynthSmilesTrainer():
     def __init__(self, logger, configs):
         self.oracle = configs.oracle.strip()
-        # self.num_metric = configs.num_metric
-        # if '+' in self.oracle:
-        #     objectives = self.oracle.split('+')
-        #     cond_cfg = ConditionalsConfig()
-        #     cond_cfg.moo.num_objectives = len(objectives)
-        #     class _TmpCfg:
-        #         pass
-        #     tmp_cfg = _TmpCfg()
-        #     tmp_cfg.cond = cond_cfg
-        #     tmp_cfg.seed = configs.seed
-        #     self.pref_cond = MultiObjectiveWeightedPreferences(tmp_cfg)
-        #     self.num_metric = len(objectives) + 1
-        # el
-        # if self.oracle == "vina":
-        #     self.num_metric = 3  # reward, vina, qed
-        # else:
-        #     self.pref_cond = None
         self.num_metric = 3 if self.oracle == "vina" else 1
 
         pdb_path = f'../../data/LIT-PCBA/{configs.vina_receptor}/protein.pdb'
@@ -322,22 +305,14 @@ class SynthSmilesTrainer():
         self.lr_z = configs.lr_z
         self.max_norm = configs.max_norm
         self.beta = configs.beta
-        # self.kl_coefficient = configs.kl_coefficient
-        # self.rtb = configs.rtb
-        # self.use_log_reward = configs.use_log_reward
         self.buffer_size = configs.buffer_size
-        # self.buffer_topk = configs.buffer_topk
         self.sampling_temp = configs.sampling_temp
         self.eval_sampling_temp = configs.eval_sampling_temp
-        # self.n_replay = configs.n_replay
         self.replay_batch_size = configs.replay_batch_size
-        # self.evict_by = configs.evict_by
         self.eval_every = configs.eval_every
-        # self.replace_sampling = configs.replace_sampling
 
         # constraints
         self.chemical_filter = ChemicalFilter(catalog=configs.catalog, property_rule=configs.property_rule) if configs.property_rule != "none" else None
-        # self.filter_start_step = configs.filter_start_step
         
         # logger
         self.wandb = configs.wandb
@@ -365,7 +340,6 @@ class SynthSmilesTrainer():
         self.sa_evaluator = SAEvaluator()
         self.sa_threshold = configs.sa_threshold
         self.filter_unsynthesizable = configs.filter_unsynthesizable
-        # self.sa_eval_threshold = configs.sa_eval_threshold
         self.synthesizability_evaluator = SynthesizabilityEvaluator(use_retrosynthesis=configs.use_retrosynthesis, env=configs.retro_env, max_steps=configs.max_retro_steps)
 
         self.reshape_reward = configs.reshape_reward
@@ -373,15 +347,7 @@ class SynthSmilesTrainer():
         self.aux_loss = configs.aux_loss
         self.neg_coefficient = configs.neg_coefficient
         self.without_mutation = configs.without_mutation
-        # self.logp_thr = configs.logp_thr
-        # self.sigmoid_alpha = configs.sigmoid_alpha
-        # self.use_weighted_logp = configs.use_weighted_logp
-        # self.use_mutation = configs.use_mutation
-        # self.use_token_threshold = configs.use_token_threshold
-        # self.dropout_off = configs.dropout_off
-
-        # self.separate_optimizer = configs.separate_optimizer
-        # self.separate_update = configs.separate_update
+        self.store_mutated_samples = configs.store_mutated_samples
         
     def train(self):
         oracle = f"{self.oracle}-{self.vina_receptor}" if self.oracle == "vina" else self.oracle
@@ -508,6 +474,25 @@ class SynthSmilesTrainer():
                 valid_reward = valid_reward[positive.bool()]
                 valid_seqs = valid_seqs[positive.bool()]
                 valid_smiles = [smis for flag, smis in zip(positive, valid_smiles) if flag]
+
+                if self.store_mutated_samples:
+                    mutated_neg_smiles, mutated_seqs, mutated_neg_reward, mutated_mask = [], [], [], []
+                    for s, r in zip(valid_smiles, valid_reward):
+                        mutated = mutate(s, self.synthesizability_evaluator)
+                        if mutated:
+                            try:
+                                mutated_info = diff_mask_molformer(s, mutated, self.tokenizer)
+                            except:
+                                continue
+                            mutated_neg_smiles.append(mutated)
+                            mutated_neg_reward.append(r)  # not used anyway
+                            mutated_seqs.append(torch.tensor(mutated_info['input_ids']))
+                            mutated_mask.append(torch.tensor(mutated_info['mask']))
+                    # mutated_neg_seqs = self.tokenizer.batch_encode_plus(mutated_neg_smiles, add_special_tokens=True, padding=True, max_length=self.max_length, return_tensors='pt')["input_ids"].to(self.device)
+                    if len(mutated_seqs) > 0:
+                        mutated_neg_seqs = pad_sequence(mutated_seqs, batch_first=True, padding_value=2).to(self.device)
+                        mutated_neg_reward = torch.tensor(mutated_neg_reward).to(self.device)
+                        self.negative_replay.add_batch(mutated_neg_seqs.to('cpu'), mutated_neg_smiles, mutated_neg_reward.to('cpu'), [0] * len(mutated_seqs), masks=mutated_mask)
 
             self.replay.add_batch(valid_seqs, valid_smiles, valid_reward, synthesizability, None, use_reshaped_reward=self.reshape_reward)
 
@@ -680,42 +665,44 @@ class SynthSmilesTrainer():
                         aux_loss = -(pos_seq_logprobs - torch.logaddexp(pos_seq_logprobs, neg_log_sum)).mean()
 
                         if not self.without_mutation:
-                            mutated_neg_smiles, mutated_seqs= [], []
+                            mutated_neg_smiles = []
                             paired = []
                             for s in buf_smis:
-                                mutated = mutate(s, self.synthesizability_evaluator)
-                                if mutated:
-                                    try:
-                                        mutated_info = diff_mask_molformer(s, mutated, self.tokenizer)
-                                    except:
-                                        paired.append(False)
-                                        continue
+                                mutated = mutate(s, self.synthesizability_evaluator, n_try=1)
+                                if mutated and nltk.edit_distance(s, mutated) < 5:
+                                    # try:
+                                    #     mutated_info = diff_mask_molformer(s, mutated, self.tokenizer)
+                                    # except:
+                                    #     paired.append(False)
+                                    #     continue
                                     paired.append(True)
                                     mutated_neg_smiles.append(mutated)
-                                    mutated_seqs.append(torch.tensor(mutated_info['input_ids']))
+                                    # mutated_seqs.append(torch.tensor(mutated_info['input_ids']))
                                 else:
                                     paired.append(False)
                             # mutated_neg_seqs = self.tokenizer.batch_encode_plus(mutated_neg_smiles, add_special_tokens=True, padding=True, max_length=self.max_length, return_tensors='pt')["input_ids"].to(self.device)
-                            if len(mutated_seqs) > 0:
-                                mutated_neg_seqs = pad_sequence(mutated_seqs, batch_first=True, padding_value=2).to(self.device)
+                            if len(mutated_neg_smiles) > 0:
+                                mutated_encoded = self.tokenizer.batch_encode_plus(mutated_neg_smiles, add_special_tokens=True, padding=True, max_length=self.max_length, return_tensors='pt')
+                                mutated_neg_seqs = mutated_encoded["input_ids"].to(self.device)
+                                # mutated_neg_seqs = pad_sequence(mutated_seqs, batch_first=True, padding_value=2).to(self.device)
                             
-                            paired = torch.tensor(paired).to(self.device)
-                            mutated_outputs = self.model(
-                                input_ids=mutated_neg_seqs[:, :-1],
-                                attention_mask=(mutated_neg_seqs[:, :-1] != self.tokenizer.pad_token_id).long(),
-                                labels=mutated_neg_seqs[:, 1:],
-                            )
+                                paired = torch.tensor(paired).to(self.device)
+                                mutated_outputs = self.model(
+                                    input_ids=mutated_neg_seqs[:, :-1],
+                                    attention_mask=(mutated_neg_seqs[:, :-1] != self.tokenizer.pad_token_id).long(),
+                                    labels=mutated_neg_seqs[:, 1:],
+                                )
 
-                            # Fix shape mismatch for torch.gather by aligning shift_logits and shift_labels
-                            mutated_shift_labels = mutated_neg_seqs[:, 1:]
-                            mutated_logits = mutated_outputs.logits  # (batch, seq_len, vocab)
-                            mutated_log_probs = torch.nn.functional.log_softmax(mutated_logits, dim=-1)
-                            mutated_seq_token_logprobs = torch.gather(mutated_log_probs, 2, mutated_shift_labels.unsqueeze(-1)).squeeze(-1)
-                            mutated_seq_token_logprobs = mutated_seq_token_logprobs * (mutated_shift_labels != self.tokenizer.pad_token_id)
-                            mutated_seq_logprobs = mutated_seq_token_logprobs.sum(dim=1)
+                                # Fix shape mismatch for torch.gather by aligning shift_logits and shift_labels
+                                mutated_shift_labels = mutated_neg_seqs[:, 1:]
+                                mutated_logits = mutated_outputs.logits  # (batch, seq_len, vocab)
+                                mutated_log_probs = torch.nn.functional.log_softmax(mutated_logits, dim=-1)
+                                mutated_seq_token_logprobs = torch.gather(mutated_log_probs, 2, mutated_shift_labels.unsqueeze(-1)).squeeze(-1)
+                                mutated_seq_token_logprobs = mutated_seq_token_logprobs * (mutated_shift_labels != self.tokenizer.pad_token_id)
+                                mutated_seq_logprobs = mutated_seq_token_logprobs.sum(dim=1)
 
-                            mutated_log_sum = torch.logsumexp(mutated_seq_logprobs, dim=0) - math.log(max(mutated_seq_logprobs.numel(), 1.0))
-                            aux_loss += -(pos_seq_logprobs[paired] - torch.logaddexp(pos_seq_logprobs[paired], mutated_log_sum)).mean()
+                                mutated_log_sum = torch.logsumexp(mutated_seq_logprobs, dim=0) - math.log(max(mutated_seq_logprobs.numel(), 1.0))
+                                aux_loss += -(pos_seq_logprobs[paired] - torch.logaddexp(pos_seq_logprobs[paired], mutated_log_sum)).mean()
 
                     elif self.aux_loss == "relative_logp_pairwise_mutated":
                         pos_seq_logprobs = seq_logprobs
@@ -782,8 +769,11 @@ class SynthSmilesTrainer():
             log_dict["online_tb_loss"] = online_tb_loss
             log_dict["tb_loss"] = replay_tb_loss
             log_dict["log_z"] = self.log_z.item()
-            log_dict["avg_pos_lop"] = seq_logprobs.mean().item()
-            log_dict["avg_neg_lop"] = neg_seq_logprobs.mean().item()
+            try:
+                log_dict["avg_pos_lop"] = seq_logprobs.mean().item()
+                log_dict["avg_neg_lop"] = neg_seq_logprobs.mean().item()
+            except:
+                pass
             log_dict["lr"] = self.scheduler.get_last_lr()[0] if self.n_warmup_steps > 0 else self.learning_rate
             log_dict["lr_logz"] = self.scheduler.get_last_lr()[1] if self.n_warmup_steps > 0 else self.lr_z
             log_dict["aux_loss"] = replay_aux_loss
@@ -922,12 +912,13 @@ class SynthSmilesTrainer():
         # filter_ratio = after_filtering.float().mean().item()
 
         # positive = synthesizability * after_filtering.float()
-        mode = 'final' if final else 'eval'
 
+        # if final or (step + 1) % 1000 == 0:
+        mode = 'final' if final else 'eval'
         # save samples (smis), rewards, synthesizability to csv
         after_filtering = torch.ones(len(samples))
         df = pd.DataFrame(zip(samples, reward.tolist(), synthesizability.tolist(), after_filtering.tolist()), columns=["smiles", "reward", "synthesizability", "chemical_filter"])
-        df.to_csv(f"outputs/{oracle}/{self.run_name}_{step}.csv", index=False)
+        df.to_csv(f"outputs/{oracle}/{self.run_name}_{mode}.csv", index=False)
 
         with open(f"outputs/{oracle}/{self.run_name}_positive_replay.pkl", "wb") as f:
             pickle.dump(self.replay.heap, f)
@@ -1058,6 +1049,7 @@ if __name__ == "__main__":
     parser.add_argument("--aux_loss", type=str, default="none", choices=["none", "relative_logp", "relative_logp_pairwise_mutated"])
     parser.add_argument("--neg_coefficient", type=float, default=0.0001)
     parser.add_argument("--without_mutation", action="store_true")
+    parser.add_argument("--store_mutated_samples", action="store_true")
 
     parser.add_argument("--catalog", choices=["PAINS_A", "PAINS_B", "PAINS_C", "BRENK", "NIH", "ZINC"], default="")
     parser.add_argument("--property_rule", choices=["lipinski", "veber", "none"], default="none")
