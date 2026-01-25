@@ -6,6 +6,7 @@ import torch
 from typing import Dict, List, Tuple
 import re
 
+import nltk
 from gflownet.utils import sascore
 from genetic_operator import crossover as co
 from genetic_operator import mutate as graph_ga_mutate
@@ -31,8 +32,8 @@ def mutate(smiles, synth_evaluator, mode="graph_ga", n_try: int=10):
             mutated_smiles = Chem.MolToSmiles(mutated, isomericSmiles=False)
             if synth_evaluator.score(mutated_smiles):  # still synthesizable
                 mol = mutated if (i+1) % 5 == 0 else Chem.MolFromSmiles(smiles)
-            else:
-                return None
+            elif nltk.edit_distance(smiles, mutated_smiles) < 5:
+                return mutated_smiles
     return None
 
 

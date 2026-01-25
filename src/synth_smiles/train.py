@@ -19,6 +19,7 @@ import pandas as pd
 import os
 import pickle
 import math
+import nltk
 import torch
 import torch.nn.functional as F
 from rdkit import Chem
@@ -1038,7 +1039,7 @@ if __name__ == "__main__":
 
     parser.add_argument("--reshape_reward", action="store_true")
     parser.add_argument("--eval_samples", type=int, default=1000)
-    parser.add_argument("--eval_every", type=int, default=100)
+    parser.add_argument("--eval_every", type=int, default=500)
 
     parser.add_argument("--sa_threshold", type=float, default=4.0)
     parser.add_argument("--filter_unsynthesizable", action="store_true")
