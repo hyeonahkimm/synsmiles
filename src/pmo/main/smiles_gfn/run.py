@@ -199,9 +199,6 @@ class SMILES_GFN_Optimizer(BaseOptimizer):
 
         print(config)
 
-        # path_here = os.path.dirname(os.path.realpath(__file__))
-        # voc = Vocabulary(init_from_file=os.path.join(path_here, "data/Voc"))
-
         tokenizer = AutoTokenizer.from_pretrained("ibm-research/MoLFormer-XL-both-10pct", trust_remote_code=True)
         prior = AutoModelForCausalLM.from_pretrained("ibm-research/GP-MoLFormer-Uniq", trust_remote_code=True).to(device)
         model = AutoModelForCausalLM.from_pretrained("ibm-research/GP-MoLFormer-Uniq", trust_remote_code=True).to(device)
@@ -215,12 +212,6 @@ class SMILES_GFN_Optimizer(BaseOptimizer):
                                       {'params': log_z, 
                                        'lr': config['lr_z']}])
 
-
-        # For policy based RL, we normally train on-policy and correct for the fact that more likely actions
-        # occur more often (which means the agent can get biased towards them). Using experience replay is
-        # therefor not as theoretically sound as it is for value based RL, but it seems to work well.
-        # experience = Experience(voc, max_size=config['num_keep'])
-        # neg_experience = Experience(voc, max_size=config['num_keep'], fifo=True)
         replay = ReplayBuffer(eos_token_id = tokenizer.eos_token_id if tokenizer.eos_token_id else 1,
                                    pad_token_id = tokenizer.pad_token_id,
                                    max_size=config['num_keep'],
@@ -241,10 +232,6 @@ class SMILES_GFN_Optimizer(BaseOptimizer):
 
         prev_best = 0.
         
-        # eval_times = []
-        # training_times = []
-        # total_start = perf_counter()
-
         synth_history = []
 
         while True:
@@ -260,11 +247,9 @@ class SMILES_GFN_Optimizer(BaseOptimizer):
                 training_mode = 'onpolicy'
                 with torch.no_grad():
                     seqs = model.generate(
-                        # input_ids,
                         do_sample=True,
                         max_length=config['max_length'],
                         num_return_sequences=config['batch_size'],
-                        # temperature=self.sampling_temp,
                         pad_token_id=tokenizer.pad_token_id,
                         eos_token_id=tokenizer.eos_token_id,
                         use_cache=True
@@ -315,10 +300,6 @@ class SMILES_GFN_Optimizer(BaseOptimizer):
                     valid_smiles = smiles
                     valid_scores = scores
                     valid_synth = synthesizability
-                # try:
-                #     print(f"step {step}: unique {len(unique_idxs)}, synthesizability {synthesizability.mean().item()}, max score: {valid_scores.max().item()}, avg score: {valid_scores.mean().item()},  pos replay {len(replay.heap)}, neg replay {len(negative_replay.heap)}")
-                # except:
-                #     print(f"step {step}: unique {len(unique_idxs)}, synthesizability {synthesizability.mean().item()},")
             else:  # replay training
                 training_mode = 'replay'
                 valid_inputs, valid_scores = replay.sample(config['experience_replay'], device, reward_prioritized=True)
@@ -479,7 +460,6 @@ class SMILES_GFN_Optimizer(BaseOptimizer):
                 torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=config['max_norm'])
                 optimizer.step()
 
-            # print(f"Step {step}: {loss.item()}, {aux_loss.item()}")
             step += 1
 
         try:

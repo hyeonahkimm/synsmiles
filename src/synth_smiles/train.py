@@ -363,12 +363,10 @@ class SynthSmilesTrainer():
                                    evict_by='reward'
                                    )
         
-        # Backup code
         self.optimizer = torch.optim.AdamW([{'params': self.model.parameters(), 
                                                  'lr': self.learning_rate},
                                             {'params': self.log_z, 
                                                  'lr': self.lr_z}])
-
 
         if self.n_warmup_steps > 0:
             self.scheduler = get_linear_schedule_with_warmup(
@@ -377,21 +375,11 @@ class SynthSmilesTrainer():
                 num_training_steps=self.n_steps
             )
 
-
         self.negative_replay = ReplayBuffer(eos_token_id = self.tokenizer.eos_token_id if self.tokenizer.eos_token_id else 1,
                                 pad_token_id = self.tokenizer.pad_token_id,
                                 max_size=self.buffer_size,
-                                # sim = 0.0,  # no similarity check
                                 evict_by='oldest'
                                 )
-        # self.neg_optimizer = torch.optim.AdamW(self.model.parameters(), self.learning_rate)
-        # if self.n_warmup_steps > 0:
-        #     self.neg_scheduler = get_linear_schedule_with_warmup(
-        #         self.neg_optimizer,
-        #         num_warmup_steps=self.n_warmup_steps,
-        #         num_training_steps=self.n_steps
-        #     )
-
 
 
         print(f"Starting training (oracle: {self.oracle})")
@@ -431,13 +419,12 @@ class SynthSmilesTrainer():
 
 
             valid_indices, valid_smiles = [], []
-            for i, s in enumerate(smis):  # also remove duplicates??
+            for i, s in enumerate(smis):
                 try: 
                     mol = Chem.MolFromSmiles(s)
                     if mol:
                         valid_indices.append(i)
-                        # valid_smiles.append(s)
-                        valid_smiles.append(Chem.MolToSmiles(mol, isomericSmiles=False))  # canonicalize smiles # TODO: check here (should we canonicalize all samples?)
+                        valid_smiles.append(Chem.MolToSmiles(mol, isomericSmiles=False))  # canonicalize smiles 
                 except:
                     pass
             valid_reward = reward[valid_indices]
@@ -532,7 +519,6 @@ class SynthSmilesTrainer():
             loss = torch.pow(forward_flow - backward_flow, 2).mean()
             online_tb_loss = loss.item()
             
-            # if self.separate_optimizer or self.separate_update or self.aux_loss != "relative_logp":
             self.optimizer.zero_grad()
             loss.backward()
             torch.nn.utils.clip_grad_norm_(self.model.parameters(), max_norm=self.max_norm)
@@ -545,7 +531,6 @@ class SynthSmilesTrainer():
             top10_sa = sum(self.sa_evaluator.score(t.smiles) for t in top10) / 10
             top10_synthesizability = sum(t.synthesizability.item() for t in top10) / 10
             try: 
-                # top10_diversity = int_div([t.smiles for t in top10])  #calc_diversity(samples)
                 top10_diversity = calculate_molecular_diversity([Chem.MolFromSmiles(t.smiles) for t in top10])[0]
             except:
                 top10_diversity = -1.0
@@ -556,7 +541,6 @@ class SynthSmilesTrainer():
                 top100_sa = sum(self.sa_evaluator.score(t.smiles) for t in top100) / 100
                 top100_synthesizability = sum(t.synthesizability.item() for t in top100) / 100
                 try: 
-                    # top100_diversity = int_div([t.smiles for t in top100])  #calc_diversity(samples)
                     top100_diversity = calculate_molecular_diversity([Chem.MolFromSmiles(t.smiles) for t in top100])[0]
                 except:
                     top100_diversity = -1.0
@@ -566,7 +550,6 @@ class SynthSmilesTrainer():
                 top100_diversity = -1.0
                 top100_synthesizability = -1.0
 
-            # logging generated samples' results as log_dict
             log_dict = {
                 "sampled_max_reward": valid_reward.max().item() if valid_reward.numel() > 0 else 0.0,
                 "sampled_avg_reward": avg_valid_reward,
@@ -575,7 +558,6 @@ class SynthSmilesTrainer():
                 "sampled_avg_sa": sa_scores.mean().item(),
                 "sampled_synth_ratio": synthesizability.mean().item(),
                 "sampled_filter_ratio": (after_filtering).float().mean().item(),
-                # "sampled_topk_avg_reward": reward_topk.mean().item(),
                 "sampled_max_length": (seqs == 1).nonzero()[:, 1].max().item(),
                 "num_onpolicy_samples": len(valid_smiles),
                 "buffer_top10_avg_reward": top10_reward,
@@ -587,9 +569,7 @@ class SynthSmilesTrainer():
                 "buffer_top100_diversity": top100_diversity,
                 "buffer_top100_synthesizability": top100_synthesizability,
                 "buffer_size": len(self.replay.heap),
-                # "buffer_replaced_cnt": self.replay.replaced_cnt,
                 "neg_replay_size": len(self.negative_replay.heap) if self.negative_replay else 0,
-                # "neg_buffer_replaced_cnt": self.negative_replay.replaced_cnt if self.negative_replay else 0,
             }
 
             if self.oracle == "vina":
@@ -670,22 +650,14 @@ class SynthSmilesTrainer():
                             paired = []
                             for s in buf_smis:
                                 mutated = mutate(s, self.synthesizability_evaluator, n_try=1)
-                                if mutated and nltk.edit_distance(s, mutated) < 5:
-                                    # try:
-                                    #     mutated_info = diff_mask_molformer(s, mutated, self.tokenizer)
-                                    # except:
-                                    #     paired.append(False)
-                                    #     continue
+                                if mutated:
                                     paired.append(True)
                                     mutated_neg_smiles.append(mutated)
-                                    # mutated_seqs.append(torch.tensor(mutated_info['input_ids']))
                                 else:
                                     paired.append(False)
-                            # mutated_neg_seqs = self.tokenizer.batch_encode_plus(mutated_neg_smiles, add_special_tokens=True, padding=True, max_length=self.max_length, return_tensors='pt')["input_ids"].to(self.device)
                             if len(mutated_neg_smiles) > 0:
                                 mutated_encoded = self.tokenizer.batch_encode_plus(mutated_neg_smiles, add_special_tokens=True, padding=True, max_length=self.max_length, return_tensors='pt')
                                 mutated_neg_seqs = mutated_encoded["input_ids"].to(self.device)
-                                # mutated_neg_seqs = pad_sequence(mutated_seqs, batch_first=True, padding_value=2).to(self.device)
                             
                                 paired = torch.tensor(paired).to(self.device)
                                 mutated_outputs = self.model(
@@ -704,51 +676,6 @@ class SynthSmilesTrainer():
 
                                 mutated_log_sum = torch.logsumexp(mutated_seq_logprobs, dim=0) - math.log(max(mutated_seq_logprobs.numel(), 1.0))
                                 aux_loss += -(pos_seq_logprobs[paired] - torch.logaddexp(pos_seq_logprobs[paired], mutated_log_sum)).mean()
-
-                    elif self.aux_loss == "relative_logp_pairwise_mutated":
-                        pos_seq_logprobs = seq_logprobs
-
-                        # aux_loss = -(pos_seq_logprobs - torch.logaddexp(pos_seq_logprobs, neg_seq_logprobs)).mean() 
-                        neg_log_sum = torch.logsumexp(neg_seq_logprobs, dim=0) - math.log(max(neg_seq_logprobs.numel(), 1.0))
-                        aux_loss = -(pos_seq_logprobs - torch.logaddexp(pos_seq_logprobs, neg_log_sum)).mean()
-
-                        if not self.without_mutation:
-                            mutated_neg_smiles, mutated_seqs= [], []
-                            paired = []
-                            for s in buf_smis:
-                                mutated = mutate(s, self.synthesizability_evaluator)
-                                if mutated:
-                                    try:
-                                        mutated_info = diff_mask_molformer(s, mutated, self.tokenizer)
-                                    except:
-                                        paired.append(False)
-                                        continue
-                                    paired.append(True)
-                                    mutated_neg_smiles.append(mutated)
-                                    mutated_seqs.append(torch.tensor(mutated_info['input_ids']))
-                                else:
-                                    paired.append(False)
-                            # mutated_neg_seqs = self.tokenizer.batch_encode_plus(mutated_neg_smiles, add_special_tokens=True, padding=True, max_length=self.max_length, return_tensors='pt')["input_ids"].to(self.device)
-                            if len(mutated_seqs) > 0:
-                                mutated_neg_seqs = pad_sequence(mutated_seqs, batch_first=True, padding_value=2).to(self.device)
-                            
-                            paired = torch.tensor(paired).to(self.device)
-                            mutated_outputs = self.model(
-                                input_ids=mutated_neg_seqs[:, :-1],
-                                attention_mask=(mutated_neg_seqs[:, :-1] != self.tokenizer.pad_token_id).long(),
-                                labels=mutated_neg_seqs[:, 1:],
-                            )
-
-                            # Fix shape mismatch for torch.gather by aligning shift_logits and shift_labels
-                            mutated_shift_labels = mutated_neg_seqs[:, 1:]
-                            mutated_logits = mutated_outputs.logits  # (batch, seq_len, vocab)
-                            mutated_log_probs = torch.nn.functional.log_softmax(mutated_logits, dim=-1)
-                            mutated_seq_token_logprobs = torch.gather(mutated_log_probs, 2, mutated_shift_labels.unsqueeze(-1)).squeeze(-1)
-                            mutated_seq_token_logprobs = mutated_seq_token_logprobs * (mutated_shift_labels != self.tokenizer.pad_token_id)
-                            mutated_seq_logprobs = mutated_seq_token_logprobs.sum(dim=1)
-
-                            # mutated_log_sum = torch.logsumexp(mutated_seq_logprobs, dim=0) - math.log(max(mutated_seq_logprobs.numel(), 1.0))
-                            aux_loss += -(pos_seq_logprobs[paired] - torch.logaddexp(pos_seq_logprobs[paired], mutated_seq_logprobs)).mean()
 
                     else:
                         raise ValueError(f"Invalid auxiliary loss: {self.aux_loss}")
@@ -778,7 +705,6 @@ class SynthSmilesTrainer():
             log_dict["lr"] = self.scheduler.get_last_lr()[0] if self.n_warmup_steps > 0 else self.learning_rate
             log_dict["lr_logz"] = self.scheduler.get_last_lr()[1] if self.n_warmup_steps > 0 else self.lr_z
             log_dict["aux_loss"] = replay_aux_loss
-            # log_dict["logp_thr"] = logp_thr if logp_thr < 0 else self.logp_thr
 
             if self.wandb != 'disabled':
                 wandb.log(log_dict, step=step)
@@ -797,7 +723,6 @@ class SynthSmilesTrainer():
                     'log_z': self.log_z,
                     'optimizer_state_dict': self.optimizer.state_dict(),
                     'scheduler_state_dict': self.scheduler.state_dict() if hasattr(self, "scheduler") else None,
-                    # 'neg_scheduler_state_dict': self.neg_scheduler.state_dict() if hasattr(self, "neg_scheduler") else None,
                     'step': step,
                 }, model_path)
                 if hasattr(self, "neg_optimizer") and self.neg_optimizer is not None:
@@ -822,7 +747,6 @@ class SynthSmilesTrainer():
             'log_z': self.log_z,
             'optimizer_state_dict': self.optimizer.state_dict(),
             'scheduler_state_dict': self.scheduler.state_dict() if hasattr(self, "scheduler") else None,
-            # 'neg_scheduler_state_dict': self.neg_scheduler.state_dict() if hasattr(self, "neg_scheduler") else None,
             'step': self.n_steps-1,
         }, model_path)
         if hasattr(self, "neg_optimizer") and self.neg_optimizer is not None:
@@ -849,7 +773,7 @@ class SynthSmilesTrainer():
             remaining = num_samples
 
         # Use a reasonable per-batch sample size
-        per_batch = 64 if "+" in self.oracle else 128  # min(self.batch_size, 256)
+        per_batch = 64 if "+" in self.oracle else 128
 
         with torch.no_grad():
             while remaining > 0:
@@ -886,7 +810,7 @@ class SynthSmilesTrainer():
         elif final:
             df = pd.DataFrame(samples, columns=["smiles"])
             df.to_csv(f"outputs/{oracle}/{self.run_name}_final_all.csv", index=False)
-            idx = torch.randperm(len(samples))[:num_samples]  # following synflownet, but why? do they sample without considering duplicates?
+            idx = torch.randperm(len(samples))[:num_samples]  # following synflownet
             samples = [samples[i] for i in idx.tolist()]
             reward_computed = False
         else:
@@ -909,12 +833,6 @@ class SynthSmilesTrainer():
             synth_ratio = synthesizability.mean().item()
         sa_scores = torch.tensor(self.sa_evaluator.score_batch(samples))
 
-        # after_filtering = torch.tensor(self.chemical_filter.filter(samples)) if self.chemical_filter else torch.ones(len(samples))
-        # filter_ratio = after_filtering.float().mean().item()
-
-        # positive = synthesizability * after_filtering.float()
-
-        # if final or (step + 1) % 1000 == 0:
         mode = 'final' if final else 'eval'
         # save samples (smis), rewards, synthesizability to csv
         after_filtering = torch.ones(len(samples))
@@ -1039,12 +957,12 @@ if __name__ == "__main__":
 
     parser.add_argument("--reshape_reward", action="store_true")
     parser.add_argument("--eval_samples", type=int, default=1000)
-    parser.add_argument("--eval_every", type=int, default=500)
+    parser.add_argument("--eval_every", type=int, default=100)
 
     parser.add_argument("--sa_threshold", type=float, default=4.0)
     parser.add_argument("--filter_unsynthesizable", action="store_true")
     parser.add_argument("--use_retrosynthesis", action="store_true")
-    parser.add_argument("--retro_env", type=str, default="stock", choices=["stock", "stock_curated", "stock_hb"])
+    parser.add_argument("--retro_env", type=str, default="stock_hb", choices=["stock", "stock_curated", "stock_hb"])
     parser.add_argument("--max_retro_steps", type=int, default=2)
 
     parser.add_argument("--aux_loss", type=str, default="none", choices=["none", "relative_logp", "relative_logp_pairwise_mutated"])
@@ -1058,14 +976,13 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     if args.oracle == "vina":
-        project = "vina-synth-smiles"
+        project = "synth-smiles-sbdd"
         group = args.vina_receptor
     else:
-        project = "synth-smiles2"
+        project = "synth-smiles-seh"
         group = args.oracle
 
     if args.wandb == "online":
-        wandb.login(key="04f17711a077bfaf758ef21914f89ce7faad8e58")
 
         wandb.init(project=project, name=args.run_name, config=args, group=group)
     elif args.wandb == "offline":
@@ -1075,4 +992,3 @@ if __name__ == "__main__":
 
     trainer = SynthSmilesTrainer(logger=wandb, configs=args)
     trainer.train()
-    # trainer.evaluate(num_samples=args.eval_samples, step=args.n_steps)

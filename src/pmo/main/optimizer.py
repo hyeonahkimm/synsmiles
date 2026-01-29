@@ -9,8 +9,6 @@ import tdc
 from tdc.generation import MolGen
 import wandb
 from main.utils.chem import *
-# from polyleven import levenshtein
-# import itertools
 
 
 class Objdict(dict):
@@ -48,15 +46,6 @@ def top_auc(buffer, top_n, finish, freq_log, max_oracle_calls):
     if finish and len(buffer) < max_oracle_calls:
         sum += (max_oracle_calls - len(buffer)) * top_n_now
     return sum / max_oracle_calls
-
-
-# Diversity measurement code following GFN-AL
-# def mean_pairwise_distances(seqs):
-#     dists = []
-#     for pair in itertools.combinations(seqs, 2):
-#         dists.append(levenshtein(*pair))
-#     return np.mean(dists)
-
 
 class Oracle:
     def __init__(self, args=None, mol_buffer={}):
@@ -163,8 +152,6 @@ class Oracle:
                 "diversity_top100": diversity_top100,
                 "synth_ratio": synth_ratio,
                 "n_oracle": n_calls,
-                # "best_mol": wandb.Image(Draw.MolsToGridImage([Chem.MolFromSmiles(item[0]) for item in temp_top10], 
-                #           molsPerRow=5, subImgSize=(200,200), legends=[f"f = {item[1][0]:.3f}, #oracle = {item[1][1]}" for item in temp_top10]))
             })
             if n_calls > 9900:
                 print("auc_top10:", top_auc(self.mol_buffer, 10, finish, self.freq_log, self.max_oracle_calls))
@@ -233,7 +220,6 @@ class BaseOptimizer:
         self.model_name = "Default"
         self.args = args
         self.n_jobs = args.n_jobs
-        # self.pool = joblib.Parallel(n_jobs=self.n_jobs)
         self.smi_file = args.smi_file
         self.oracle = Oracle(args=self.args)
         if self.smi_file is not None:
@@ -246,9 +232,6 @@ class BaseOptimizer:
         self.diversity_evaluator = tdc.Evaluator(name = 'Diversity')
         self.filter = tdc.chem_utils.oracle.filter.MolFilter(filters = ['PAINS', 'SureChEMBL', 'Glaxo'], property_filters_flag = False)
 
-    # def load_smiles_from_file(self, file_name):
-    #     with open(file_name) as f:
-    #         return self.pool(delayed(canonicalize)(s.strip()) for s in f)
             
     def sanitize(self, mol_list):
         new_mol_list = []

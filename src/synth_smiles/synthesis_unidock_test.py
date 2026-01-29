@@ -117,6 +117,9 @@ class SynthesizabilityEvaluator:
 def main():
 
     smiles = "O=C(NCc1ccc2c(c1)CCOC2)C1CCc2ccccc2N1"
+    smiles_list = ['CC1CCc2c(F)cccc2C1NC(=O)c1ccc2c(c1)C(=O)CC2'
+                ,'CN1C(=O)Cc2c(C(=O)Nc3cccc4c3CCCC4=O)cccc21'
+                ,'O=C1CCC(C(=O)NC2C3CCC2Cc2ccccc2C3)c2ccccc21']
 
     # Synthesizability
     synth_eval = SynthesizabilityEvaluator(
@@ -124,7 +127,7 @@ def main():
         env="stock_hb",
         max_steps=3,
     )
-    synth_score = synth_eval.score(smiles)
+    synth_score = synth_eval.score_batch(smiles_list)
 
     # Vina / UniDock
     vina_receptor = "ALDH1"
@@ -142,7 +145,7 @@ def main():
         search_mode="balance",
         num_workers=4,
     )
-    vina_score = vina.run_smiles([smiles])[0]
+    vina_score = vina.run_smiles(smiles_list, save_path="./test_docking.sdf")[0]
 
     print("=== Single-sample environment check ===")
     print(f"SMILES           : {smiles}")

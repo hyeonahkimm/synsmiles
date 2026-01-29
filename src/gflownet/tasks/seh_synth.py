@@ -358,7 +358,6 @@ def main(wandb_run_name):
     config.replay.num_new_samples = 64
 
     if wandb_run_name is not None:
-        wandb.login(key="04f17711a077bfaf758ef21914f89ce7faad8e58")
         name = f"{wandb_run_name}_{now}"
         wandb.init(project="fragment-gflownet", name=name, id=name, config=config)
     else:
